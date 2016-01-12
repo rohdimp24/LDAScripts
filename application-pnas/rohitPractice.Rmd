@@ -1,0 +1,189 @@
+---
+This is from the lda thesis...this talks about the concept of LDA withrespect to mapping it with document categories and also with the hot and cold topics
+```{r}
+load("pnas-abstracts-meta-dataframe.RData")
+str(abstracts_meta)
+#get the major category for the year 2001
+categories_2001_major <-abstracts_meta$category[abstracts_meta$year==2001]
+#get the minor category for the year 2001
+categories_2001_minor <- abstracts_meta$category_minor[abstracts_meta$year==2001]
+
+#create a new dataframe containign only the major and minor categories
+categories_2001 <- data.frame(major=categories_2001_major, minor=categories_2001_minor,stringsAsFactors = FALSE)
+
+#adding some abbr
+categories_2001$major_abbr <- factor(categories_2001_major)
+levels(categories_2001$major_abbr) <- c("(BS)","(PS)","(SS)")
+
+#a new string with the major and minor category
+categories_2001$pretty <-paste(categories_2001$minor, categories_2001$major_abbr)
+
+#lets see the distribution of the categories
+tt<-table(categories_2001$pretty)
+sort(tt,decreasing = TRUE)
+
+
+
+```
+
+Finiding the topics which will define the category for the document
+
+```{r}
+load("model-lda-gibbs-300topics.RData")
+theta <- posterior(model_lda)$topics[abstracts_meta$year == 2001,]
+#this is the way of converting the per document topic distribution to per category distribution
+#for a category first see all the documents that are falling under that category
+#then do the col means for the topics
+#then you get a single row identified by the categoryname and values = mean value of the topics for that category documents
+
+theta_mean_by <- by(theta, categories_2001$pretty, colMeans)
+theta_mean<-do.call("rbind", theta_mean_by)
+
+#this is to find the theta mean ratiion avlur for wach topic calculated as  which has the maximum ratio of j/sum(all without j)
+theta_mean_ratios <- theta_mean
+for (ii in 1:nrow(theta_mean)) {
+  for (jj in 1:ncol(theta_mean)) {
+    theta_mean_ratios[ii,jj] <- theta_mean[ii,jj] / sum(theta_mean[ii,-jj])
+  }
+ }
+
+#sort the topics based on the ratio. The sort will end up in the index locations and not the actual values
+topics_by_ratio <- apply(theta_mean_ratios, 1,function(x) sort(x, decreasing = TRUE, index.return = TRUE)$ix)
+
+#this will retrun the index of the highest ratio topics.The index and the name of the topic is the same
+topics_most_diagnostic <- topics_by_ratio[1,]
+
+#
+#theta_diagnostic <-theta_mean_ratios[,topics_most_diagnostic]
+#colnames(theta_diagnostic) <- topics_most_diagnostic
+
+#these are the unique topics
+#unique(colnames(theta_diagnostic))
+
+#unstead we can use this
+cc=unique(topics_most_diagnostic)
+ 
+for (i in 1:length(cc)) {
+    nn=names(which(topics_most_diagnostic==cc[i]))
+  #  print(cc[i])
+    print (paste(cc[i],"-",nn))
+    #nn
+}
+
+
+
+ 
+
+
+```
+
+Basically we could find out what topics are related to which category
+
+```{r}
+
+#now find the top 5 words for these topics
+terms_most_diagnostic <- get_terms (model_lda ,5)[, topics_most_diagnostic]
+
+
+
+
+```
+In the above analysis we got a DxK matrix of theta and then we transformed to categoryxTopics matrix and then finally using the most diagnostic method converted to a mapping of categiry and the most diagnostic topic 
+
+Finding hot and cold topics
+
+
+
+```{r}
+load("model-lda-gibbs-300topics.RData")
+load("pnas-abstracts-meta-dataframe.RData")
+years <- levels(factor(abstracts_meta$year))
+#number of topics
+topics_n <- model_lda@k
+#get the theta
+theta <- posterior(model_lda)$topics
+
+#this time we want to categorize teh theta by year
+theta_mean_by_year_by <- by(theta, abstracts_meta$year, colMeans)
+theta_mean_by_year <- do.call("rbind",theta_mean_by_year_by)
+colnames(theta_mean_by_year) = paste(1:topics_n)
+theta_mean_by_year_ts <- ts(theta_mean_by_year,start = as.integer(years[1]))
+theta_mean_by_year_time <- time(theta_mean_by_year)
+
+
+#considering the value of the topic for each year as x and time as 1,2 ,3...basically increafing number we want to see the line of regression ..that is do we see a positive trend or a negative trend in the use of the topic for the documents
+theta_mean_lm <- apply(theta_mean_by_year, 2,function(x) lm(x ~ theta_mean_by_year_time))
+theta_mean_lm_coef <- lapply(theta_mean_lm, function(x) coef(summary(x)))
+#this will give the p value or the level of significance. We baiscally want to see at p=0.001 or less how is the slope value behaving
+theta_mean_lm_coef_pvalue <- sapply(theta_mean_lm_coef,'[',"theta_mean_by_year_time","Pr(>|t|)")
+#this will give the value of the slope
+theta_mean_lm_coef_slope <- sapply(theta_mean_lm_coef,'[',"theta_mean_by_year_time","Estimate")
+
+#so to get the hot topic we will take the topics whose pvalue is significant <0.0001 and sslope sign is positive
+highsignificant<-theta_mean_lm_coef_slope[which(theta_mean_lm_coef_pvalue<0.0001)]
+
+table(highsignificant>0)
+
+
+
+
+```
+
+
+```{r}
+B = matrix(c(2, 4, 3, 1, 5, 7,3,2,3,4,5,6,3,2,3,10,11,4,3,4,5,6,3,1),nrow=4,ncol=6) 
+sample_theta_mean_by=by(B,c("a","b","c","a"),colMeans)
+#this will add the category
+sample_theta_mean=do.call("rbind", sample_theta_mean_by)
+
+sample_theta_mean_ratios <- sample_theta_mean
+for (ii in 1:nrow(sample_theta_mean)) {
+  for (jj in 1:ncol(sample_theta_mean)) {
+    sample_theta_mean_ratios[ii,jj] <- sample_theta_mean[ii,jj] / sum(sample_theta_mean[ii,-jj])
+  }
+ }
+
+sample_topics_by_ratio <- apply(sample_theta_mean_ratios, 1,function(x) sort(x, decreasing = TRUE, index.return = TRUE)$ix)
+
+#actually the index will match the topic number so in the sorting we are using the indexes
+sample_topics_most_diagnostic <- sample_topics_by_ratio[1,]
+
+
+#this step accoring to me is reducdant ..this is just giveing a categiry*topic matrix whose diagnols will have the highest number
+sample_theta_diagnostic <-sample_theta_mean_ratios[,sample_topics_most_diagnostic]
+
+colnames(sample_theta_diagnostic) <- sample_topics_most_diagnostic
+
+#these are the unique topics
+unique(colnames(sample_theta_diagnostic))
+
+
+
+ cc=unique(topics_most_diagnostic)
+ 
+for (i in 1:length(cc)) {
+    nn=names(which(topics_most_diagnostic==cc[i]))
+  #  print(cc[i])
+    print (paste(cc[i],"-",nn))
+    #nn
+  }
+
+
+ 
+ B = matrix(c(2, 4, 3, 1, 5, 7,3,2,3,4,5,6,3,2,3,10,11,4,3,4,5,6,3,1),nrow=4,ncol=6) 
+ years=c("1991","1992","1991","1994")
+ sample_theta_mean_by=by(B,years,colMeans)
+ 
+ sample_theta_mean_year=do.call("rbind", sample_theta_mean_by)
+ sample_theta_mean_by_year_ts <- ts(sample_theta_mean_year,start = as.integer(years[1]))
+sample_theta_mean_by_year_time <- time(sample_theta_mean_year)
+theta_mean_lm <- apply(sample_theta_mean_year, 2, function(x) lm(x ~ sample_theta_mean_by_year_time))
+ 
+
+n = c(2.5,4.0,1.0) 
+s = c(1,2,3) 
+ df = data.frame(n, s)
+ 
+ lm(n~s,data=df)
+ 
+```

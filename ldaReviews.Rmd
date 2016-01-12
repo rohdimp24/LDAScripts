@@ -1,0 +1,201 @@
+
+Way to read the files and then convert them to a data frame..this is from the Moview reviews example
+http://davidmeza1.github.io/2015/07/20/topic-modeling-in-R.html
+
+```{r}
+path <- file.path("review_polarity", "txt_sentoken")
+pos <- list.files(file.path(path, "pos"))
+neg <- list.files(file.path(path, "neg"))
+pos.files <- file.path(path, "pos", pos)
+neg.files <- file.path(path, "neg", neg)
+all.files <- c(pos.files, neg.files)
+
+#read the files line by line. this will form a list of lines of text
+txt <- lapply(all.files, readLines)
+#just the names of the file and remove the initial directory path
+nms <- gsub("review_polarity/txt_sentoken", "", all.files)
+#basically assigning file names to the extracted text from the files
+reviews <- setNames(txt, nms)
+
+#combine the various lines of the text together
+reviews <- sapply(reviews, function(x) paste(x, collapse = " "))
+
+#finally save it as a rdata
+save(reviews, file = "reviews.rdata", compress = "xz")
+
+```
+
+now using the data 
+
+```{r, echo=FALSE}
+
+load("reviews.rdata")
+library(tm)
+stop_words <- stopwords("SMART")
+
+#preproceesing step
+reviews <- gsub("'", "", reviews)  # remove apostrophes
+reviews <- gsub("[[:punct:]]", " ", reviews)  # replace punctuation with space
+reviews <- gsub("[[:cntrl:]]", " ", reviews)  # replace control characters with space
+reviews <- gsub("^[[:space:]]+", "", reviews) # remove whitespace at beginning of documents
+reviews <- gsub("[[:space:]]+$", "", reviews) # remove whitespace at end of documents
+reviews <- tolower(reviews)  # force to lowercase
+
+
+# tokenize on space and output as a list:
+doc.list <- strsplit(reviews, "[[:space:]]+")
+
+# compute the table of terms:
+term.table <- table(unlist(doc.list))
+term.table <- sort(term.table, decreasing = TRUE)
+
+
+# remove terms that are stop words or occur fewer than 5 times:
+del <- names(term.table) %in% stop_words | term.table < 5
+#this is a matrix with the word and the frequency
+term.table <- term.table[!del]
+#this is just a list of the words without the frequency
+vocab <- names(term.table)
+
+
+
+#this function will convert the doc.list to a structure required by lda
+#A list whose length is equal to the number of documents, D. Each element of
+#documents is an integer matrix with two rows. Each column of documents[[i]]
+#(i.e., document i) represents a word occurring in the document.
+#documents[[i]][1, j] is a 0-indexed word identifier for the jth word in document
+#i. That is, this should be an index - 1 into vocab. documents[[i]][2, j] is an
+#integer specifying the number of times that word appears in the document
+
+
+get.terms <- function(x) {
+  #find the index of the word in the vocab
+  index <- match(x, vocab)
+  #remove the na
+  index <- index[!is.na(index)]
+  
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+
+documents <- lapply(doc.list, get.terms)
+
+```
+
+```{r}
+
+# Compute some statistics related to the data set:
+D <- length(documents)  # number of documents (2,000)
+W <- length(vocab)  # number of terms in the vocab (14,568)
+doc.length <- sapply(documents, function(x) sum(x[2, ]))  # number of tokens per document [312, 288, 170, 436, 291, ...]
+N <- sum(doc.length)  # total number of tokens in the data (546,827)
+term.frequency <- as.integer(term.table)  # frequencies of terms in the corpus [8939, 5544, 2411, 2410, 2143, ...]
+
+K <- 20
+G <- 20
+alpha <- 0.02
+eta <- 0.02
+
+library(lda)
+set.seed(357)
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = K, vocab = vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+
+
+#documnet-topic distributions. D X K. The document sums which is how many times a particular topic has appeared in the document is the key to calculate this
+
+theta <- t(apply(fit$document_sums + alpha, 2, function(x) x/sum(x)))
+
+#topic term distribution K X W
+#the topics which is how many times each word has appeared in a topic
+phi <- t(apply(t(fit$topics) + eta, 2, function(x) x/sum(x)))
+MovieReviews <- list(phi = phi,
+                     theta = theta,
+                     doc.length = doc.length,
+                     vocab = vocab,
+                     term.frequency = term.frequency)
+
+
+library(LDAvis)
+
+# create the JSON object to feed the visualization:
+json <- createJSON(phi = MovieReviews$phi, 
+                   theta = MovieReviews$theta, 
+                   doc.length = MovieReviews$doc.length, 
+                   vocab = MovieReviews$vocab, 
+                   term.frequency = MovieReviews$term.frequency)
+
+serVis(json, out.dir = 'vis', open.browser = FALSE)
+
+write(json, file="export.JSON")
+
+A = matrix( 
+ c(2, 4, 3, 1, 5, 7), # the data elements 
+   nrow=2,              # number of rows 
+   ncol=3,              # number of columns 
+   byrow = TRUE)        # fill matrix by rows 
+
+
+n = c(2, 3, 5) 
+s = c("aa", "bb", "cc", "dd", "ee") 
+b = c(TRUE, FALSE, TRUE, FALSE, FALSE) 
+x = list(n, s, b, 3)
+#
+#x[[1]]<-rbind(x[[1]],c(4,6,7))
+#> x[[1]][2,3]
+#[1] 7
+#> x[[1]][2,]
+#[1] 4 6 7
+#> x[[1]][1,]
+#[1] 2 3 5
+#> x[[1]][1:2,]
+#     [,1] [,2] [,3]
+#[1,]    2    3    5
+#[2,]    4    6    7
+#> x[[1]][1,1:2]
+#[1] 2 3
+
+```
+
+```{r}
+
+example <- c("I am the very I model of a modern major general",
+"I have a major headache")
+#this function can generta the document in the way required by the lda
+corpus <- lexicalize(example, lower=TRUE)
+corpus
+testFit <- lda.collapsed.gibbs.sampler(documents = corpus$documents, K = 5, vocab = corpus$vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+
+#this is basically calculating how much of each topic belongs to a document
+#the document sum is the matricx that will give how mwany times word assing to a particular topic appears or in other words what is the contribution of topic to the document
+#the matrix has topic as row and document as column so sum on the columns
+thetaSample <- t(apply(testFit$document_sums + alpha, 2, function(x) x/sum(x)))
+
+#basically the sum is per topic so row wise
+phiSample <-  t(apply((testFit$topics+eta), 1, function(x) x/sum(x)))
+#similaring word frequecy per topic
+
+sampleterm.frequency=table(unlist(corpus$documents))
+
+sampledoc.length <- sapply(corpus$documents, function(x) sum(x[2, ]))
+sampleReview <- list(phi = phiSample,
+                     theta = thetaSample,
+                     doc.length = sampledoc.length,
+                     vocab = corpus$vocab,
+                     term.frequency = sampleterm.frequency)
+
+samplejson <- createJSON(phi = sampleReview$phi, 
+                   theta = sampleReview$theta, 
+                   doc.length = sampleReview$doc.length, 
+                   vocab = sampleReview$vocab, 
+                   term.frequency = sampleReview$term.frequency)
+
+serVis(samplejson, out.dir = 'vis1', open.browser = FALSE)
+
+
+```

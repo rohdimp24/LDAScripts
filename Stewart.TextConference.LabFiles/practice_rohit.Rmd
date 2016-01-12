@@ -1,0 +1,141 @@
+This is from the Tutroial Brandon Stewart
+
+```{r}
+file <- read.csv("english_count.csv")
+head(file)
+str(file)
+
+papersDTM <- as.matrix(file[,-1])
+#get the list of all the files from which the data was retrieved
+rownames(papersDTM) <- file[,1]
+#save the file names in a seperate vector
+filenames <- as.character(file[,1])
+
+head(papersDTM)
+
+#find the some of all the rows this gives the weight of the total document
+rowTotals<-apply(papersDTM,1,sum)
+#now didvide each entry by of the row by the row total so basically you will get probaily of the word in that document
+input<-papersDTM/rowTotals
+#the row totals will correspond to the number of the tersm in teh document taking into account the frequency of the terms as well
+hist(rowTotals,breaks=100,xlab = "No of Terms in a document")
+
+```
+
+Now perfroming k-means clustering
+
+```{r, echo=FALSE}
+
+set.seed(12345)
+
+result<-kmeans(input,centers = 10,iter.max = 1000,nstart = 25)
+articleKMeans<-result$cluster
+Kcluster1=subset(input,articleKMeans==1)
+head(sort(colMeans(Kcluster1),decreasing=TRUE))
+
+#now we want to see which all documents are in cluster1
+inGroup<-which(result$cluster==1)
+
+#all the words from the document that appear in this cluster
+within <- papersDTM[inGroup,]
+#all the words from the documents that are not in the cluster
+out<-papersDTM[-inGroup,]
+
+#this way we will know how much the particular word appears in set of documents we are interested in .and subtracting from others will help to understand if it really occurs more in the selected documents
+topicWords<-apply(within,2,mean)-apply(out,2,mean)
+topicWords
+#get the indexes of the most frequent words
+sortedIndexes <- order(topicWords, decreasing=T)[1:20] #Take the top 20 Labels
+
+topicWords[sortedIndexes]
+
+
+#for loop to list down all the clusters
+
+for (i in 1:10) {
+  inGroup <- which(result$cluster==i)
+  within <- papersDTM[inGroup,]
+  if(length(inGroup)==1) within <- t(as.matrix(within))
+  out <- papersDTM[-inGroup,]
+  words <- apply(within,2,mean) - apply(out,2,mean) #Take the difference in means for each term
+  print(c("Cluster", i), quote=F)
+  labels <- order(words, decreasing=T)[1:20] #Take the top 20 Labels
+  print(names(words)[labels], quote=F)
+  print(i)
+  }
+
+
+```
+Verify if the words make sense
+
+```{r}
+
+clusterNum <- 1
+filenames[which(result$cluster==clusterNum)]
+#filenames[1][sample(sum(result$cluster==1),1)]
+#randomly select a dosument
+randomFileName=filenames[which(result$cluster==clusterNum)][sample(sum(result$cluster==clusterNum),1)]
+head(file)
+#filecontent=file[file$filename=="TomzVanHouweling200808txt",]
+exploreFile=papersDTM[randomFileName,]
+
+#now convert the content of the file to a matrix
+filemat=t(as.matrix(exploreFile))
+#this will allow us to find out the most common words in the file
+words <- apply(filemat,2,sum)
+frequentWordIndexs=order(words,decreasing = T)[1:20]
+
+#print the high frequency words
+labels(filemat)[[2]][frequentWordIndexs]
+
+```
+
+
+
+using the lda
+
+```{r}
+
+load("Exercise2.RData")
+library(lda)
+summary(ldadata)
+head(file.order)
+head(data.order)
+
+
+set.seed(12345)
+K <- 50
+result <- lda.collapsed.gibbs.sampler(
+          ldadata$documents, #This is the set of documents
+          K, #This is the number of clusters
+          ldadata$vocab, #This is the vocab set
+          25, #These are additional model parameters
+          0.1,
+          0.1)
+
+#get the topic words
+top.words <- top.topic.words(result$topics, 10, by.score=TRUE)
+library(ggplot2)
+library(reshape)
+
+
+N <- 10
+topic.proportions <- t(result$document_sums) / colSums(result$document_sums)
+topic.proportions <- topic.proportions[sample(1:dim(topic.proportions)[1], N),]
+topic.proportions[is.na(topic.proportions)] <- 1 / K
+colnames(topic.proportions) <- apply(top.words, 2, paste, collapse=" ")
+topic.proportions.df <- melt(cbind(data.frame(topic.proportions),
+document=factor(1:N)),
+variable_name="topic",
+id.vars = "document")
+qplot(topic, value, fill=document, ylab="proportion",
+data=topic.proportions.df, geom="bar") +
+coord_flip() +
+facet_wrap(~ document, ncol=5)
+
+```
+
+
+
+
+

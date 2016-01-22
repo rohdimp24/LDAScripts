@@ -1,0 +1,254 @@
+---
+unicorn cases
+```{r}
+
+#this is the script that can connect to the mysql and then fetch the data
+#install.packages("RMySQL")
+library(RMySQL)
+mydb = dbConnect(MySQL(), user='root', password='', dbname='newunicornplatformproject', host='localhost')
+cases <- dbGetQuery(mydb, "SELECT casedetails.`CASE_ID`, `CASE_HISTORY`, `DATE_CREATED`,MONTHNAME(DATE_CREATED) as Month,YEAR(DATE_CREATED) as year,`PRODUCT_NAME`,`CUSTOMER_NAME`, `CUSTOMER_REGION` FROM `cases`,`casedetails` WHERE `cases`.`CASE_ID`=casedetails.CASE_ID LIMIT 500")
+
+#this is the subset 
+subcases<-dbGetQuery(mydb, "SELECT `CASE_ID`, `LAST_COMMUNICATION`, `PROBLEM_STATEMENT`, `CASE_HISTORY` FROM `casedetails` LIMIT 500")
+
+library(tm)
+library(SnowballC)
+library(Matrix)
+library(lda)
+library(LDAvis)
+library(servr)
+library(stringr)
+
+
+txt = cases$CASE_HISTORY
+#txt=subcases
+
+# pre-processing
+txt <- gsub("'", "", txt)  # remove apostrophes
+#txt<-str_replace_all(txt, "[\r\n]" , "") #remove the \r and \n
+#test="2932-F32 32938 23892-F238 jkhkdhdks skdks dkhsk dhskhdk 
+#kdkshds skjds dksk d2392-232 3394-F489 "
+
+#txt<-gsub("[0-9]+-[\\D][0-9]+\\s","",txt,perl=T) #to replace the case numbers if they appear inside case content
+
+txt <- gsub("[[:punct:]]", " ", txt)  # replace punctuation with space
+txt <- gsub("[[:cntrl:]]", " ", txt)  # replace control characters with space
+txt <- gsub("^[[:space:]]+", "", txt) # remove whitespace at beginning of documents
+txt <- gsub("[[:space:]]+$", "", txt) # remove whitespace at end of documents
+#txt <- tolower(txt)  # force to lowercase
+
+#remove only digits
+
+# tokenize on space and output as a list:
+doc.list <- strsplit(txt, "[[:space:]]+")
+
+term.table <- table(unlist(doc.list))
+term.table <- sort(term.table, decreasing = TRUE)
+
+
+# stop words
+
+stop_words = c(0:100,2000:2020,stopwords("english"), LETTERS)
+#updated the list of stop words
+stop_words=c(stop_words,"Healthcare" ,"GE","Royne","Eriksson","Ã","Masaru","Daniel","Asano","Engineer","Kerstin","AM","Case","IQ","Adam","Berlex","Hagberg","Kaletski","March","Referral","Regards","Steven","Dan","PM","CSSX,February","Field","History","Marcus,Read","Specialist","Tuesday,Uppsala,Cambrex","CSSx","Dec","Feb","Fixed","Greg","Joakim","JPG","Karlsson","Kjell","Schiedt","Stefan,Screen","Andreas","Bergstrom","Bjorn","Bo","Christian","Date","Eric","Friday","Irina","KTA","Monday","Sannervik,Steve","Sweden","Haberstroh","Michael","Address","Bjon","California","Co","Cohen","Dahl","Does","Explain","FROM","Gateway","HP","Inc","Jaderlund","Jan","January","Johan","Johansson","LaBreck","Lamonica","Manager","Marcus","Mantovaara","Mathov","May","Mike","Milbourn","MotorB","Northeast","Nov","October","Offâ","Ohlin","Oishi","Petrell","Product","Raymond","Report","Sara","Simon","Soderstrom,Support","SUPPORT","SW","SWEDISH","TEAM","Thom","Truman","Tuula","UF","Urban","US","WAIT","Win","Yi","January","january","feburary","Feburary","march","april","may","june","july","august","september","october","november","december","March","April","May","June","July","August","September","October","November","December","Karlberg","Nakamura","Niklas","Schwald","Frieder","â","Hochberger","Taylor","LaMonica","Lars","Mr","Mr.","Shafiq","Vikram","Alexander","Galin","Rohit","Agarwal","Winther","Aug","Sep","Apr","Mar","Jul","Stefan","Pontoppidan","Jun","Ursula","Christer","Olivier","Schwicker","Oct","Friker","Frank","Gut","Markus","de","Time","Werner","John","Jon","Les","George","Uppsala","Baker","Linda","Im","Landby","Walter","Ill","Jing","Friedl","Krasnansky","Microsoft","Tommy","Hideaki","Tomas","V1","Annica","Johann","Otsuka","Anneli","Carlos","Debbie","HÃ","Lutz","ã","BjÃ","Gebauer","Nevil","Ive","Fredrik","Gerard","Tack","Liu","Lot","Lots","Pettersson","Susanne","Bjornsson","Data","Oskar","Martin","AA","Cannavale","Europe","Koen","Lundquist","Marzia","Thomas","AB","Banzawa","FW","Michaloudis","Niebler","Lundgren","MB","Alessandro","ASAP","Chelating","Mathe","Takako","Lindgren","Deane","Declan","February","Harald","Juri","Nicklas","Ning","Norbitec","Task","Thorell","Hi","Vercammen","Akervall","Anna","Bettin","Brassard","Erik","Giacomo","Katsumoto","Kim","Sheila","Swedberg","Stijn","Camilla","des","Healy","Larsson","Satoshi","Olle","Peti","Subject","From","Sent","To","Cc","Gil","Joerg","Kunz","ge","den","co","RE","danyel","der","il","mailto","972","Micha","We","back","one","They","customer","Uschi","using","last","please","now","Kind","check","add","get","asked","number","related","see","regards","file","documentation","send","David","hope","And","Would","pdf","regards","date","updated","found","It","Mahesh","Best","Dieter","daniel","landby","Helen","Lewis","Pedro","replaced","This","watch","one","well","fine","Best","see","Go","rn","cause","In","shows","second","Ramiro","We","Magnus","Landsmann","Santos","See","message","Renata","email","cmcbio","Forsberg","00","thanks","Africa","They","la","Torre","Go","See","see","email","value","message","service","still","using","know","customer","one","Dear","ok","number","Can","possible","new","support","via","Kohei","Xiao","thanks","want","message","Lan","Noll","using","Start","started","added","Windows","know","information","tested","Ettan","prom","customers","work","Seiichi","old","We","Cossens","Â","Per","Ali","Mikael","Carl","Denker","regards","Dabiri","Lindner","Best","China","sound","e","Beijing","normal","Yasushi","possible","Briese","plans","version","plan","new","behaviour","old","regards","best","00","see","way","used","can","instead","can","seems","This","Best","regards","please","can","know","need","We","see","This","now","help","us","back","possible","also","Dear","Customer","send","like","got","Armin","Mikael","regards","Hej","Best","can","new","Kind","last","You","rn","best","After","For","contact","Sent","Subject","From","com","To","Cc","RE","ge","den","Jill","mail","www","PC","Norell","Kajal","answer","Sr","Biswas","sent","No","user","following","When","If","The","Ulrika","umesh")
+
+stop_words=c(stop_words,"01","01","02","03","04","05","06","07","08","09","Is","Attachments","Comments","Thanks","will","when","which","to","We","The","Please","attached","problem","â€“","Hansson","Gustafsson","Anders","Grelsson","hedlund","Harald","linus")
+
+stop_words=tolower(stop_words)
+
+# remove terms that are stop words or occur fewer than 3 times:
+del <- tolower(names(term.table)) %in% stop_words | term.table < 3 
+term.table <- term.table[!del]
+vocab <- names(term.table)
+
+#vocab1=vocab
+
+#performNLP(vocab)
+
+```
+Performing LDA. 
+Converting the data into the data structures understood by lda(). There is another library called topic modelling, which can take the document term matrix as an input instead of special data strcuture as in case of lda()
+
+```{r}
+
+# now put the documents into the format required by the lda package:
+get.terms <- function(x) {
+  index <- match(x, vocab)
+  index <- index[!is.na(index)]
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+documents <- lapply(doc.list, get.terms)
+
+# Compute some statistics related to the data set:
+D <- length(documents)
+W <- length(vocab)  
+doc.length <- sapply(documents, function(x) sum(x[2, ])) 
+N <- sum(doc.length)  
+term.frequency <- as.integer(term.table)
+
+K <- 40
+G <- 1000
+alpha <- 0.02
+eta <- 0.02
+
+# Fit the model:
+set.seed(357)
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = K, vocab = vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1  
+
+theta <- t(apply(fit$document_sums + alpha, 2, function(x) x/sum(x)))
+phi <- t(apply(t(fit$topics) + eta, 2, function(x) x/sum(x)))
+
+```
+Drawing the visualization
+
+```{r}
+
+#colnames(theta)<-c(1:30)
+
+results <- list(phi = phi,
+                theta = theta,
+                doc.length = doc.length,
+                vocab = vocab,
+                term.frequency = term.frequency)
+
+json <- createJSON(phi = results$phi, 
+                   theta = results$theta, 
+                   doc.length = results$doc.length, 
+                   vocab = results$vocab, 
+                   term.frequency = results$term.frequency)
+write(json, file="export_2.JSON")
+
+
+serVis(json, out.dir = 'vis6', open.browser = FALSE)
+
+#note that the ldavis is changing the topic order
+#"topic.order": [ 24, 27, 13, 21, 9, 23, 16, 7, 11, 22, 4, 17, 12, 3, 14, 20, 5, 2, 30, 28, 29, 26, 1, 8, 10, 15, 18, 25, 6, 19 ]
+#this means the topic 19 on LDAvis is actually topic 30 in theta
+
+library(rjson)
+jsonDocument <- fromJSON(json_str = json)
+
+ldavisTopicOrder=as.vector(jsonDocument$topic.order)
+
+#since LDAvis will change the order of the topics while displaying so this will map the ldavis topic number with the theta matrix topic number
+getThetaIndexForTopic=function(topicNumber){
+  index=1
+  for(i in 1:length(ldavisTopicOrder)){
+    if(ldavisTopicOrder[i]==topicNumber){
+        index=i
+        break;    
+    }
+  }
+  index  
+}
+
+getLdavisIndexFromTheta=function(thetaTopic){
+  
+    ldavisTopicOrder[]
+  
+}
+
+
+```
+Now trying to verifying what we  see in the LDAvis is mapping to the theta table as welll
+
+```{r, echo=FALSE}
+
+topic_doc=theta
+
+#these are the top words in 
+top.words <- top.topic.words(fit$topics, 30, by.score=TRUE)
+#this will give a matrix of number of wordsxK where each column will correspond to the top words for the topic
+
+#indexes of the documents conatainign the tipoic
+index=getThetaIndexForTopic(21)
+index
+gg=which(topic_doc[,index]>0.1)
+subcases$CASE_HISTORY[gg[1]]
+#key words for this topic
+top.words[,index]
+
+```
+
+Now suppose we want to perform some analysis
+```{r}
+
+companies=cases$CUSTOMER_NAME
+companies=tolower(companies)
+groupCompany=table(companies)
+highBugCompanies=groupCompany[groupCompany>5]
+
+
+```
+
+
+Get the defining topic for the documents
+```{r}
+theta_mean_ratios=theta
+
+
+for (ii in 1:nrow(theta)) {
+  for (jj in 1:ncol(theta)) {
+    theta_mean_ratios[ii,jj] <- theta[ii,jj] / sum(theta[ii,-jj])
+  }
+}
+
+topics_by_ratio <- apply(theta_mean_ratios, 1,function(x) sort(x, decreasing = TRUE, index.return = TRUE)$ix)
+
+topics_most_diagnostic <- topics_by_ratio[1,]
+
+enhancedCases=cases
+enhancedCases$Topic=topics_most_diagnostic
+
+```
+Topic distribution for a company
+
+```{r}
+
+novocases=subset(enhancedCases,tolower(enhancedCases$CUSTOMER_NAME)=="novo nordisk a/s")
+hist(novocases$Topic,breaks = c(1:30))
+table(novocases$Topic)
+top.words[,21]
+
+```
+
+Perfromign the hot topic and cold topic analysis..
+We want to see if there is a trend in the kind of cases that are coming.
+
+```{r}
+originalTheta=theta
+calender=cases$year
+
+enhancedCases$calender=calender
+
+theta_mean_by_year_by <- by(theta, enhancedCases$calender, colMeans)
+theta_mean_by_year <- do.call("rbind",theta_mean_by_year_by)
+
+
+colnames(theta_mean_by_year) = paste(1:30)
+#theta_mean_by_year_ts <- ts(theta_mean_by_year,start = as.integer(years[1]))
+theta_mean_by_year_time <- time(theta_mean_by_year)
+
+theta_mean_lm <- apply(theta_mean_by_year, 2,function(x) lm(x ~ theta_mean_by_year_time))
+theta_mean_lm_coef <- lapply(theta_mean_lm, function(x) coef(summary(x)))
+
+theta_mean_lm_coef_pvalue <- sapply(theta_mean_lm_coef,'[',"theta_mean_by_year_time","Pr(>|t|)")
+#this will give the value of the slope
+theta_mean_lm_coef_slope <- sapply(theta_mean_lm_coef,'[',"theta_mean_by_year_time","Estimate")
+
+#so to get the hot topic we will take the topics whose pvalue is significant <0.0001 and sslope sign is positive
+highsignificant<-theta_mean_lm_coef_slope[which(theta_mean_lm_coef_pvalue<0.01)]
+table(highsignificant>0)
+
+#to get the topoic numbers
+names(which(highsignificant>0))
+
+
+```
+
